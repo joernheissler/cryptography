@@ -18,7 +18,8 @@ from cryptography.hazmat.primitives.asymmetric.padding import (
     AsymmetricPadding, MGF1, OAEP, PKCS1v15, PSS, calculate_max_pss_salt_length
 )
 from cryptography.hazmat.primitives.asymmetric.rsa import (
-    RSAPrivateKeyWithSerialization, RSAPublicKeyWithSerialization
+    RSAPrivateKey, RSAPrivateKeyWithSerialization,
+    RSAPublicKeyWithSerialization
 )
 
 
@@ -464,6 +465,53 @@ class _RSAPrivateKey(object):
         signer.update(data)
         signature = signer.finalize()
         return signature
+
+
+@utils.register_interface(RSAPrivateKey)
+class _RSAExternalPrivateKey(object):
+    # XXX too much copy+paste here!
+    def __init__(self, backend, rsa_cdata, evp_pkey, impl):
+        self._backend = backend
+        self._rsa_cdata = rsa_cdata
+        self._evp_pkey = evp_pkey
+        self._impl = impl
+
+        self._handle = backend._ffi.new_handle(self)
+        # XXX is RSA_set_app_data the correct way? Or should one register an
+        # index with RSA_get_ex_new_index and use RSA_set_ex_data?
+        backend._lib.RSA_set_app_data(self._rsa_cdata, self._handle)
+
+        self._key_size = self._impl.n.bit_length()
+
+    key_size = utils.read_only_property("_key_size")
+
+    def signer(self, padding, algorithm):
+        return _RSASignatureContext(self._backend, self, padding, algorithm)
+
+    def decrypt(self, ciphertext, padding):
+        key_size_bytes = int(math.ceil(self.key_size / 8.0))
+        if key_size_bytes != len(ciphertext):
+            raise ValueError("Ciphertext length must be equal to key size.")
+
+        return _enc_dec_rsa(self._backend, self, ciphertext, padding)
+
+    def public_key(self):
+        ctx = self._backend._lib.RSAPublicKey_dup(self._rsa_cdata)
+        self._backend.openssl_assert(ctx != self._backend._ffi.NULL)
+        ctx = self._backend._ffi.gc(ctx, self._backend._lib.RSA_free)
+        res = self._backend._lib.RSA_blinding_on(ctx, self._backend._ffi.NULL)
+        self._backend.openssl_assert(res == 1)
+        evp_pkey = self._backend._rsa_cdata_to_evp_pkey(ctx)
+        return _RSAPublicKey(self._backend, ctx, evp_pkey)
+
+    def sign(self, data, padding, algorithm):
+        signer = self.signer(padding, algorithm)
+        signer.update(data)
+        signature = signer.finalize()
+        return signature
+
+    def _private_encrypt(self, msg, padding):
+        return self._impl.private_encrypt(msg, padding)
 
 
 @utils.register_interface(RSAPublicKeyWithSerialization)

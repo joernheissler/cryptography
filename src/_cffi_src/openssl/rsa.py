@@ -26,6 +26,7 @@ static const int Cryptography_HAS_RSA_OAEP_MD;
 
 FUNCTIONS = """
 RSA *RSA_new(void);
+RSA *RSA_new_method(ENGINE *);
 void RSA_free(RSA *);
 int RSA_size(const RSA *);
 int RSA_generate_key_ex(RSA *, int, BIGNUM *, BN_GENCB *);
@@ -60,9 +61,35 @@ void RSA_get0_key(const RSA *, const BIGNUM **, const BIGNUM **,
 void RSA_get0_factors(const RSA *, const BIGNUM **, const BIGNUM **);
 void RSA_get0_crt_params(const RSA *, const BIGNUM **, const BIGNUM **,
                          const BIGNUM **);
+RSA_METHOD *RSA_meth_new(const char *name, int flags);
+void RSA_meth_free(RSA_METHOD *);
+const RSA_METHOD *RSA_PKCS1_OpenSSL(void);
+
+int (*RSA_meth_get_pub_enc(const RSA_METHOD *))
+    (int, const unsigned char *, unsigned char *, RSA *, int);
+int RSA_meth_set_pub_enc(RSA_METHOD *, int (*)
+    (int, const unsigned char *, unsigned char *, RSA *, int));
+int (*RSA_meth_get_pub_dec(const RSA_METHOD *))
+    (int, const unsigned char *, unsigned char *, RSA *, int);
+int RSA_meth_set_pub_dec(RSA_METHOD *, int (*)
+    (int, const unsigned char *, unsigned char *, RSA *, int));
+int (*RSA_meth_get_mod_exp(const RSA_METHOD *))
+    (BIGNUM *, const BIGNUM *, RSA *, BN_CTX *);
+int RSA_meth_set_mod_exp(RSA_METHOD *, int (*)
+    (BIGNUM *, const BIGNUM *, RSA *, BN_CTX *));
+int (*RSA_meth_get_bn_mod_exp(const RSA_METHOD *))
+    (BIGNUM *, const BIGNUM *, const BIGNUM *, const BIGNUM *, BN_CTX *,
+     BN_MONT_CTX *);
+int RSA_meth_set_bn_mod_exp(RSA_METHOD *, int (*)
+    (BIGNUM *, const BIGNUM *, const BIGNUM *, const BIGNUM *, BN_CTX *,
+    BN_MONT_CTX *));
+int RSA_meth_set_priv_enc(RSA_METHOD *, int (*)
+    (int, const unsigned char *, unsigned char *, RSA *, int));
 """
 
 MACROS = """
+int RSA_set_app_data(RSA *, void *);
+void *RSA_get_app_data(RSA *);
 int EVP_PKEY_CTX_set_rsa_padding(EVP_PKEY_CTX *, int);
 int EVP_PKEY_CTX_set_rsa_pss_saltlen(EVP_PKEY_CTX *, int);
 int EVP_PKEY_CTX_set_rsa_mgf1_md(EVP_PKEY_CTX *, EVP_MD *);

@@ -12,6 +12,7 @@ TYPES = """
 typedef ... BN_CTX;
 typedef ... BIGNUM;
 typedef int... BN_ULONG;
+typedef ... BN_MONT_CTX;
 """
 
 FUNCTIONS = """

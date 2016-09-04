@@ -12,6 +12,7 @@ import six
 from cryptography import utils
 from cryptography.exceptions import UnsupportedAlgorithm, _Reasons
 from cryptography.hazmat.backends.interfaces import RSABackend
+from cryptography.hazmat.primitives.interfaces import ExternalRSAPrivateKey
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -113,6 +114,17 @@ def generate_private_key(public_exponent, key_size, backend):
 
     _verify_rsa_parameters(public_exponent, key_size)
     return backend.generate_rsa_private_key(public_exponent, key_size)
+
+
+def load_external_private_key(impl, backend):
+    if not isinstance(backend, RSABackend):
+        raise UnsupportedAlgorithm(
+            "Backend object does not implement RSABackend.",
+            _Reasons.BACKEND_MISSING_INTERFACE
+        )
+    if not isinstance(impl, ExternalRSAPrivateKey):
+        raise TypeError('impl must derive from ExternalRSAPrivateKey')
+    return backend.load_rsa_external_private_key(impl)
 
 
 def _verify_rsa_parameters(public_exponent, key_size):

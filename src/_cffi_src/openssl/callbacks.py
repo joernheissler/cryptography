@@ -34,6 +34,13 @@ extern "Python" int Cryptography_pem_password_cb(char *, int, int, void *);
  */
 extern "Python" int Cryptography_rand_bytes(unsigned char *, int);
 extern "Python" int Cryptography_rand_status(void);
+
+/* rsa.h
+ * int (*priv_enc)(int srclen, const unsigned char *src, unsigned char *dst,
+ *                 RSA *rsa, int padding);
+ */
+extern "Python" int Cryptography_rsa_priv_enc_cb(
+    int, const unsigned char *, unsigned char *, RSA *, int);
 """
 
 FUNCTIONS = """

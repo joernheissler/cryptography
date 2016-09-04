@@ -103,6 +103,12 @@ class RSABackend(object):
         """
 
     @abc.abstractmethod
+    def load_rsa_external_private_key(self, impl):
+        """
+        Load an external RSAPrivateKey instance.
+        """
+
+    @abc.abstractmethod
     def rsa_padding_supported(self, padding):
         """
         Returns True if the backend supports the given padding options.

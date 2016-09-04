@@ -38,6 +38,7 @@ static const unsigned int ENGINE_METHOD_ALL;
 static const unsigned int ENGINE_METHOD_NONE;
 
 static const int ENGINE_R_CONFLICTING_ENGINE_ID;
+static const int ENGINE_FLAGS_NO_REGISTER_ALL;
 """
 
 FUNCTIONS = """

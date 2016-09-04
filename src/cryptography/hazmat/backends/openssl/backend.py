@@ -38,7 +38,7 @@ from cryptography.hazmat.backends.openssl.encode_asn1 import (
 from cryptography.hazmat.backends.openssl.hashes import _HashContext
 from cryptography.hazmat.backends.openssl.hmac import _HMACContext
 from cryptography.hazmat.backends.openssl.rsa import (
-    _RSAPrivateKey, _RSAPublicKey
+    _RSAExternalPrivateKey, _RSAPrivateKey, _RSAPublicKey
 )
 from cryptography.hazmat.backends.openssl.x509 import (
     _Certificate, _CertificateRevocationList,
@@ -102,6 +102,28 @@ def _pem_password_cb(buf, size, writing, userdata_handle):
             "by this backend.".format(size - 1)
         )
         return 0
+
+
+@binding.ffi_callback(
+    "int (int, const unsigned char *, unsigned char *, RSA *, int)",
+    name='Cryptography_rsa_priv_enc_cb')
+def _rsa_priv_enc_cb(srclen, src, dst, rsa, padding):
+    # XXX `padding' is a value from rsa.h RSA_XXX_PADDING,
+    # e.g. RSA_PKCS1_PADDING --> 1
+    # Should pass backend independent constants to impl instead!
+    pkey = _ffi.from_handle(backend._lib.RSA_get_app_data(rsa))
+    try:
+        sig = pkey._private_encrypt(_ffi.buffer(src, srclen)[:], padding)
+    except Exception as e:
+        # XXX Need better exception handling than "print"
+        print(e)
+        return -1
+
+    # XXX Add a safeguard so a broken implementation cannot cause a buffer
+    # overflow here. The length of the signature should be known in advance,
+    # it should always be the size of the modulus.
+    _ffi.memmove(dst, sig, len(sig))
+    return len(sig)
 
 
 @utils.register_interface(CipherBackend)
@@ -1702,6 +1724,92 @@ class Backend(object):
                                        buf, length)
         self.openssl_assert(res == 1)
         return self._ffi.buffer(buf)[:]
+
+    def load_rsa_external_private_key(self, impl):
+        rsa._check_public_key_components(impl.e, impl.n)
+
+        engine = self._get_external_engine()
+        rsa_cdata = self._lib.RSA_new_method(engine)
+        self.openssl_assert(rsa_cdata != self._ffi.NULL)
+        rsa_cdata = self._ffi.gc(rsa_cdata, self._lib.RSA_free)
+
+        e = self._int_to_bn(impl.e)
+        n = self._int_to_bn(impl.n)
+        res = self._lib.RSA_set0_key(rsa_cdata, n, e, self._ffi.NULL)
+        self.openssl_assert(res == 1)
+
+        evp_pkey = self._rsa_cdata_to_evp_pkey(rsa_cdata)
+
+        return _RSAExternalPrivateKey(self, rsa_cdata, evp_pkey, impl)
+
+    def _get_external_rsa_method(self):
+        # XXX Implemented as a singleton. What about garbage collection?
+        # Usually, OpenSSL would call a destructor callback from
+        # ENGINE_free if no longer needed.
+        try:
+            return self._rsa_external
+        except AttributeError:
+            pass
+
+        method = self._lib.RSA_meth_new(b'ext_rsa', 0)
+        self.openssl_assert(method != self._ffi.NULL)
+        method = self._ffi.gc(method, self._lib.RSA_meth_free)
+
+        ossl_method = self._lib.RSA_PKCS1_OpenSSL()
+        self.openssl_assert(ossl_method != self._ffi.NULL)
+
+        tmp = self._lib.RSA_meth_get_pub_enc(ossl_method)
+        self.openssl_assert(tmp != self._ffi.NULL)
+        res = self._lib.RSA_meth_set_pub_enc(method, tmp)
+        self.openssl_assert(res == 1)
+
+        tmp = self._lib.RSA_meth_get_pub_dec(ossl_method)
+        self.openssl_assert(tmp != self._ffi.NULL)
+        res = self._lib.RSA_meth_set_pub_dec(method, tmp)
+        self.openssl_assert(res == 1)
+
+        tmp = self._lib.RSA_meth_get_mod_exp(ossl_method)
+        self.openssl_assert(tmp != self._ffi.NULL)
+        res = self._lib.RSA_meth_set_mod_exp(method, tmp)
+        self.openssl_assert(res == 1)
+
+        tmp = self._lib.RSA_meth_get_bn_mod_exp(ossl_method)
+        self.openssl_assert(tmp != self._ffi.NULL)
+        res = self._lib.RSA_meth_set_bn_mod_exp(method, tmp)
+        self.openssl_assert(res == 1)
+
+        res = self._lib.RSA_meth_set_priv_enc(method, _rsa_priv_enc_cb)
+        self.openssl_assert(res == 1)
+
+        self._rsa_external = method
+        return self._rsa_external
+
+    def _get_external_engine(self):
+        # XXX Implemented as a singleton. What about garbage collection?
+        # Usually, OpenSSL could call a destructor automatically when the
+        # ENGINE was added with ENGINE_add. Which it is not.
+        try:
+            return self._engine_external
+        except AttributeError:
+            pass
+
+        engine = self._lib.ENGINE_new()
+
+        res = self._lib.ENGINE_set_id(engine, b'ext_engine')
+        self.openssl_assert(res == 1)
+
+        res = self._lib.ENGINE_set_name(engine, b'External ENGINE')
+        self.openssl_assert(res == 1)
+
+        # XXX double check if this is required
+        res = self._lib.ENGINE_set_flags(
+            engine, self._lib.ENGINE_FLAGS_NO_REGISTER_ALL)
+        self.openssl_assert(res == 1)
+
+        res = self._lib.ENGINE_set_RSA(engine, self._get_external_rsa_method())
+
+        self._engine_external = engine
+        return self._engine_external
 
 
 class GetCipherByName(object):

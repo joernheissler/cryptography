@@ -35,3 +35,24 @@ class MACContext(object):
         Checks if the generated message authentication code matches the
         signature.
         """
+
+
+@six.add_metaclass(abc.ABCMeta)
+class ExternalRSAPrivateKey(object):
+    @abc.abstractproperty
+    def n(self):
+        """
+        The modulus as integer
+        """
+
+    @abc.abstractproperty
+    def e(self):
+        """
+        The public exponent as integer
+        """
+
+    @abc.abstractmethod
+    def private_encrypt(self, msg, padding):
+        """
+        Encrypt (or sign) `msg' with private key using `padding'.
+        """
